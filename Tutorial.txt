@@ -1,0 +1,153 @@
+PKGMGR - MANUAL COMPLETO
+=========================
+
+1. INTRODUÇÃO
+-------------
+O `pkgmgr` é um gerenciador de pacotes minimalista escrito em Go, projetado para
+uso em sistemas Linux From Scratch (LFS). Ele permite gerenciar a instalação,
+remoção, atualização e empacotamento de programas a partir de receitas JSON.
+Sua filosofia é simplicidade, transparência e reprodutibilidade.
+
+2. DEPENDÊNCIAS NECESSÁRIAS
+---------------------------
+- Go >= 1.21 (para compilar o `pkgmgr`).
+- git (para clonar repositórios de receitas).
+- curl (para baixar fontes).
+- tar, xz (para empacotamento e extração).
+- fakeroot (para instalação controlada sem privilégios de root).
+
+3. INSTALAÇÃO DO PKGMGR
+------------------------
+1. Compile o programa:
+   go build -o pkgmgr main.go
+
+2. Instale em /usr/local/bin:
+   sudo install -m 755 pkgmgr /usr/local/bin/
+
+3. Verifique se funciona:
+   pkgmgr --help
+
+4. ÁRVORE DE DIRETÓRIOS
+------------------------
+/var/lib/pkgmgr/
+    ├── repo/        (receitas JSON)
+    ├── sources/     (tarballs baixados)
+    ├── patches/     (arquivos .patch)
+    ├── binpkgs/     (pacotes tar.xz gerados)
+    └── packages.json (DB de pacotes instalados)
+
+/var/log/pkgmgr/       (logs de build por pacote)
+
+5. CONFIGURAÇÃO INICIAL
+------------------------
+- Inicialize o repositório de receitas:
+  sudo mkdir -p /var/lib/pkgmgr/{repo,sources,patches,binpkgs}
+  sudo mkdir -p /var/log/pkgmgr
+  sudo touch /var/lib/pkgmgr/packages.json
+
+- Sincronize com um repositório Git de receitas:
+  pkgmgr sync --repo-url https://seu-repo.git
+
+6. RECEITAS JSON
+-----------------
+Uma receita descreve como baixar, compilar, instalar e remover um programa.
+
+Estrutura básica:
+{
+  "name": "bash",
+  "version": "5.2.21",
+  "sha256": "a139c166a4691...",
+  "deps": ["ncurses"],
+  "source": {
+    "type": "curl",
+    "url": "https://ftp.gnu.org/gnu/bash/bash-5.2.21.tar.gz"
+  },
+  "steps": {
+    "preconfig":  ["comando antes do configure"],
+    "configure":  ["./configure --prefix=/usr"],
+    "patch":      ["patch -Np1 -i ${PATCH}/fix.patch"],
+    "build":      ["make -j$(nproc)"],
+    "check":      ["make check"],
+    "install":    ["make install DESTDIR=${PKG_DIR}"],
+    "posinstall": ["ln -sv bash ${PKG_DIR}/bin/sh"],
+    "postremove": ["echo 'bash removido'"]
+  }
+}
+
+Variáveis disponíveis:
+- ${SRC_DIR}   → diretório com fontes extraídos
+- ${BUILD_DIR} → diretório de build
+- ${PKG_DIR}   → destino de instalação temporária
+- ${DESTDIR}   → diretório final de instalação
+- ${BIN}       → diretório de pacotes binários
+- ${REPO}      → diretório de receitas
+- ${SOURCES}   → diretório de tarballs
+- ${PATCH}     → diretório de patches
+
+7. USO DO CLI
+--------------
+Comandos principais:
+- pkgmgr i <pkg>         → instala pacote com dependências
+- pkgmgr rm <pkg>        → remove pacote e desfaz alterações
+- pkgmgr dl <pkg>        → apenas baixa fontes
+- pkgmgr ex <pkg>        → apenas extrai fontes
+- pkgmgr pt <pkg>        → apenas aplica patches
+- pkgmgr bld <pkg>       → apenas compila
+- pkgmgr chk <pkg>       → apenas roda testes
+- pkgmgr pk <pkg>        → apenas empacota em .tar.xz
+- pkgmgr ls              → lista pacotes instalados
+- pkgmgr info <pkg>      → mostra informações
+- pkgmgr search <pkg>    → busca pacote, mostra [ ] ou [✔]
+- pkgmgr sync            → atualiza repositório de receitas
+- pkgmgr upgrade <pkg>   → atualiza pacote
+- pkgmgr upgrade         → atualiza todos pacotes
+
+Exemplo de instalação do bash:
+  sudo pkgmgr i bash
+
+Verificar se instalado:
+  pkgmgr search bash
+  [✔] bash 5.2.21
+
+Remover:
+  sudo pkgmgr rm bash
+
+8. INSTALAÇÃO DA TOOLCHAIN
+---------------------------
+Você pode criar receitas para binutils, gcc, glibc e demais pacotes da toolchain.
+O fluxo é o mesmo: cada receita define como baixar, compilar e instalar.
+O `pkgmgr` gerencia dependências e mantém os pacotes registrados.
+
+Exemplo (simplificado) de receita do binutils:
+{
+  "name": "binutils",
+  "version": "2.41",
+  "sha256": "hash...",
+  "deps": [],
+  "source": {
+    "type": "curl",
+    "url": "https://ftp.gnu.org/gnu/binutils/binutils-2.41.tar.xz"
+  },
+  "steps": {
+    "configure": ["mkdir -v build", "cd build", "../configure --prefix=/usr"],
+    "build": ["cd build", "make -j$(nproc)"],
+    "install": ["cd build", "make install DESTDIR=${PKG_DIR}"]
+  }
+}
+
+9. LOGS
+-------
+Todos os comandos executados durante a instalação ficam em:
+/var/log/pkgmgr/<pacote>.log
+
+10. REMOÇÃO
+------------
+- O pkgmgr salva a lista de arquivos instalados no DB JSON.
+- A remoção deleta esses arquivos e executa o hook `postremove`.
+
+11. ATUALIZAÇÃO
+----------------
+- pkgmgr upgrade <pkg>  → atualiza apenas um pacote.
+- pkgmgr upgrade        → atualiza todos os pacotes instalados que possuam versão mais nova.
+
+FIM
